@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDoS Hybrid Detection Dashboard</title>
+    <meta name="description" content="Adaptive Flow-Level Hybrid Learning Framework for Real-Time DDoS Detection">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #0f172a;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+            --panel-border: rgba(255,255,255,0.07);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-green: #10b981;
+            --accent-green-glow: rgba(16,185,129,0.25);
+            --accent-red: #ef4444;
+            --accent-red-glow: rgba(239,68,68,0.25);
+            --accent-blue: #3b82f6;
+            --accent-blue-glow: rgba(59,130,246,0.2);
+            --accent-amber: #f59e0b;
+            --accent-purple: #a855f7;
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed; inset: 0; z-index: -1;
+            background:
+                radial-gradient(ellipse at 10% 20%, rgba(59,130,246,0.12), transparent 50%),
+                radial-gradient(ellipse at 90% 80%, rgba(16,185,129,0.10), transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(168,85,247,0.06), transparent 60%);
+        }
+
+        /* ── Glass panels ─────────────────────────── */
+        .glass {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            box-shadow: 0 4px 30px rgba(0,0,0,0.2);
+        }
+
+        /* ── Top bar ──────────────────────────────── */
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 3%; gap: 16px; flex-wrap: wrap;
+            border-bottom: 1px solid var(--panel-border);
+            background: rgba(10,14,26,0.8);
+            backdrop-filter: blur(12px);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .topbar-title {
+            font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #60a5fa, #34d399);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .topbar-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+        .topbar-right { display: flex; align-items: center; gap: 16px; }
+        .live-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green-glow);
+            animation: blink 2s infinite;
+        }
+        @keyframes blink { 50% { opacity: 0.4; } }
+        .clock { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary); }
+
+        /* ── Layout ───────────────────────────────── */
+        .dashboard { display: grid; gap: 20px; padding: 20px 3%; }
+        .row-top { display: grid; grid-template-columns: 320px 1fr 1fr; gap: 20px; }
+        .row-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 1400px) {
+            .row-top { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 900px) {
+            .row-top, .row-bottom { grid-template-columns: 1fr; }
+        }
+
+        /* ── Status card ──────────────────────────── */
+        .status-card {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center; padding: 28px 20px;
+            transition: all 0.5s ease; position: relative; overflow: hidden;
+        }
+        .status-ring {
+            width: 160px; height: 160px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            border: 3px solid var(--accent-green);
+            box-shadow: 0 0 30px var(--accent-green-glow);
+            transition: all 0.5s ease; position: relative; margin-bottom: 18px;
+        }
+        .status-ring::before {
+            content: ''; position: absolute;
+            inset: -8px; border-radius: 50%;
+            border: 2px dashed rgba(255,255,255,0.12);
+            animation: spin 12s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100%{ transform:scale(1); box-shadow:0 0 20px var(--accent-red-glow); } 50%{ transform:scale(1.06); box-shadow:0 0 50px var(--accent-red-glow); } }
+        .status-card.attack .status-ring {
+            border-color: var(--accent-red);
+            box-shadow: 0 0 40px var(--accent-red-glow);
+            animation: pulse 1s infinite;
+        }
+        .status-card.attack .status-ring::before { border-color: rgba(239,68,68,0.3); animation-duration: 2s; }
+        .status-icon { font-size: 3.2rem; }
+        .status-label { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
+        .status-card.attack .status-label { color: var(--accent-red); }
+        .status-card.normal .status-label { color: var(--accent-green); }
+        .metrics-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 14px; }
+        .metric-box {
+            background: rgba(0,0,0,0.25); padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .metric-lbl { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+        .metric-val { font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .hybrid-bar {
+            grid-column: span 2; text-align: center;
+            font-size: 0.8rem; color: var(--accent-amber);
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(245,158,11,0.08); padding: 8px;
+            border-radius: 8px; margin-top: 6px;
+        }
+        /* Confidence bar */
+        .bar-wrap { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin-top: 8px; position: relative; overflow: visible; }
+        .bar-fill { height: 100%; border-radius: 3px; background: var(--accent-green); transition: width 0.4s, background 0.4s; }
+        .bar-marker { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; border-radius: 1px; transition: left 0.4s; z-index: 2; }
+
+        /* ── Chart cards ──────────────────────────── */
+        .chart-card { padding: 20px; }
+        .chart-card h2 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 14px; }
+        .chart-wrap { position: relative; height: 220px; }
+
+
+
+        /* ── Log feed ─────────────────────────────── */
+        .log-card { padding: 20px; display: flex; flex-direction: column; }
+        .log-card h2 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 14px; }
+        .log-feed {
+            flex: 1; max-height: 340px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 6px;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+        }
+        .log-feed::-webkit-scrollbar { width: 4px; }
+        .log-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        .log-entry {
+            display: flex; gap: 8px; padding: 7px 10px;
+            border-radius: 6px; background: rgba(255,255,255,0.02);
+            border-left: 3px solid transparent;
+            animation: slideIn 0.25s ease forwards;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
+        .log-entry.normal { border-left-color: var(--accent-green); }
+        .log-entry.attack { border-left-color: var(--accent-red); background: rgba(239,68,68,0.06); }
+        .log-entry.adaptive { border-left-color: var(--accent-blue); background: rgba(59,130,246,0.06); }
+        .log-time { color: var(--text-muted); white-space: nowrap; min-width: 70px; }
+        .log-msg { color: var(--text-secondary); }
+        .log-entry.attack .log-msg { color: #fca5a5; font-weight: 600; }
+
+        /* ── Stats summary ────────────────────────── */
+        .stats-card { padding: 20px; }
+        .stats-card h2 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 14px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .stat-item {
+            background: rgba(0,0,0,0.2); padding: 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+        .stat-value { font-size: 1.6rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .stat-value.green { color: var(--accent-green); }
+        .stat-value.red { color: var(--accent-red); }
+        .stat-value.blue { color: var(--accent-blue); }
+        .stat-value.amber { color: var(--accent-amber); }
+
+        .empty-state { color: var(--text-muted); text-align: center; padding: 40px 0; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+    <div>
+        <div class="topbar-title">DDoS Hybrid Detection Dashboard</div>
+        <div class="topbar-sub">Adaptive Flow-Level Framework • 7 Modules</div>
+    </div>
+    <div class="topbar-right">
+        <div class="live-dot" id="liveDot"></div>
+        <span class="clock" id="clock">--:--:--</span>
+    </div>
+</div>
+
+<div class="dashboard">
+
+    <!-- Row 1: Status + Charts -->
+    <div class="row-top">
+        <!-- Status Panel -->
+        <div class="glass status-card normal" id="statusCard">
+            <div class="status-ring" id="statusRing">
+                <div class="status-icon" id="statusIcon">🛡️</div>
+            </div>
+            <div class="status-label" id="statusLabel">Waiting for Traffic...</div>
+            <div class="metrics-row">
+                <div class="metric-box">
+                    <div class="metric-lbl">Hybrid Confidence</div>
+                    <div class="metric-val" id="confVal">0.0%</div>
+                    <div class="bar-wrap">
+                        <div class="bar-fill" id="confBar"></div>
+                        <div class="bar-marker" id="threshMark" title="Adaptive Threshold"></div>
+                    </div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-lbl">Adaptive Threshold</div>
+                    <div class="metric-val" style="color:var(--accent-blue)" id="threshVal">70.0%</div>
+                </div>
+                <div class="hybrid-bar" id="hybridBar">RF: 0.0% | SVM: 0.0%</div>
+            </div>
+        </div>
+
+        <!-- Confidence History Chart -->
+        <div class="glass chart-card">
+            <h2>📉 Confidence History</h2>
+            <div class="chart-wrap"><canvas id="confChart"></canvas></div>
+        </div>
+
+        <!-- Traffic Rate Chart -->
+        <div class="glass chart-card">
+            <h2>📶 Traffic Rate</h2>
+            <div class="chart-wrap"><canvas id="rateChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Row 2: Logs + Stats -->
+    <div class="row-bottom">
+        <!-- Live Event Feed -->
+        <div class="glass log-card">
+            <h2>⚡ Live Engine Events</h2>
+            <div class="log-feed" id="logFeed">
+                <div class="empty-state">Awaiting events from detection engine...</div>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="glass stats-card">
+            <h2>📊 Summary Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Total Predictions</div>
+                    <div class="stat-value" id="statTotal">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Attacks Detected</div>
+                    <div class="stat-value red" id="statAttacks">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Normal Traffic</div>
+                    <div class="stat-value green" id="statNormal">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Attack Rate</div>
+                    <div class="stat-value amber" id="statRate">0%</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Avg Confidence</div>
+                    <div class="stat-value blue" id="statAvgConf">0%</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Adaptive Mode</div>
+                    <div class="stat-value green" id="statAdaptive">ON</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ── DOM refs ─────────────────────────────────────
+const statusCard  = document.getElementById('statusCard');
+const statusIcon  = document.getElementById('statusIcon');
+const statusLabel = document.getElementById('statusLabel');
+const confVal     = document.getElementById('confVal');
+const confBar     = document.getElementById('confBar');
+const threshVal   = document.getElementById('threshVal');
+const threshMark  = document.getElementById('threshMark');
+const hybridBar   = document.getElementById('hybridBar');
+const logFeed     = document.getElementById('logFeed');
+const clockEl     = document.getElementById('clock');
+
+// Stats
+const statTotal    = document.getElementById('statTotal');
+const statAttacks  = document.getElementById('statAttacks');
+const statNormal   = document.getElementById('statNormal');
+const statRate     = document.getElementById('statRate');
+const statAvgConf  = document.getElementById('statAvgConf');
+const statAdaptive = document.getElementById('statAdaptive');
+
+// ── Clock ────────────────────────────────────────
+setInterval(() => {
+    clockEl.textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// ── Chart.js setup ───────────────────────────────
+const chartOpts = (yLabel) => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 300 },
+    scales: {
+        x: { display: false },
+        y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' }, title: { display: true, text: yLabel, color: '#94a3b8', font: { size: 10 } } }
+    },
+    plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12, font: { size: 10 } } } },
+    elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } }
+});
+
+const confChart = new Chart(document.getElementById('confChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'Confidence %', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true },
+            { label: 'Threshold %', data: [], borderColor: '#3b82f6', borderDash: [6,3], fill: false }
+        ]
+    },
+    options: chartOpts('Confidence %')
+});
+
+const rateChart = new Chart(document.getElementById('rateChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'Pkts/sec', data: [], borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.1)', fill: true }
+        ]
+    },
+    options: chartOpts('Packets/sec')
+});
+
+
+// ── State ────────────────────────────────────────
+let lastEvtHash = '';
+
+// ── Main polling loop ────────────────────────────
+async function poll() {
+    try {
+        const res = await fetch('/api/data');
+        const d = await res.json();
+
+        // Status card — check warm-up state first
+        const isAtk = d.is_attack;
+        const warmingUp = d.adaptive && d.adaptive.warming_up;
+
+        if (warmingUp) {
+            statusCard.className = 'glass status-card normal';
+            statusIcon.textContent = '⏳';
+            statusLabel.textContent = 'Initializing... (' + (d.adaptive.warmup_remaining || '') + ' samples left)';
+        } else {
+            statusCard.className = 'glass status-card ' + (isAtk ? 'attack' : 'normal');
+            statusIcon.textContent = isAtk ? '⚠️' : '🛡️';
+            statusLabel.textContent = d.status;
+        }
+
+        // Metrics
+        confVal.textContent = d.confidence.toFixed(1) + '%';
+        confBar.style.width = Math.min(d.confidence, 100) + '%';
+        confBar.style.background = isAtk ? 'var(--accent-red)' : 'var(--accent-green)';
+        threshMark.style.left = Math.min(d.threshold, 100) + '%';
+
+        // Hybrid bar
+        const rf = (d.rf_confidence || 0).toFixed(1);
+        const svm = (d.svm_confidence || 0).toFixed(1);
+        hybridBar.textContent = `RF: ${rf}% | SVM: ${svm}%`;
+
+        // Stats
+        if (d.stats) {
+            statTotal.textContent = d.stats.total_predictions || 0;
+            statAttacks.textContent = d.stats.total_attacks || 0;
+            statNormal.textContent = d.stats.total_normal || 0;
+            statRate.textContent = (d.stats.attack_rate || 0).toFixed(1) + '%';
+            // avg_confidence is already a percentage value (e.g. 68.5 means 68.5%)
+            const avgConf = d.stats.avg_confidence || 0;
+            statAvgConf.textContent = avgConf.toFixed(1) + '%';
+        }
+        if (d.adaptive) {
+            statAdaptive.textContent = d.adaptive.adaptive_mode ? 'ON' : 'OFF';
+            statAdaptive.className = 'stat-value ' + (d.adaptive.adaptive_mode ? 'green' : 'red');
+            // Show warm-up state in threshold display
+            if (d.adaptive.warming_up) {
+                threshVal.textContent = 'Warming up...';
+                threshVal.style.fontSize = '0.9rem';
+                threshVal.style.color = 'var(--accent-amber)';
+            } else {
+                threshVal.textContent = d.threshold.toFixed(1) + '%';
+                threshVal.style.fontSize = '';
+                threshVal.style.color = 'var(--accent-blue)';
+            }
+        }
+
+        // Confidence history chart
+        if (d.confidence_history && d.confidence_history.length) {
+            const chLabels = d.confidence_history.map(h => {
+                // Use time portion of ISO timestamp as label
+                const t = (h.time || '').split('T');
+                return t.length > 1 ? t[1].substring(0, 8) : '';
+            });
+            confChart.data.labels = chLabels;
+            confChart.data.datasets[0].data = d.confidence_history.map(h => h.confidence);
+            confChart.data.datasets[1].data = d.confidence_history.map(h => h.threshold);
+            confChart.update('none');
+        }
+
+        // Rate chart
+        if (d.rate_history && d.rate_history.length) {
+            const rhLabels = d.rate_history.map(h => {
+                const t = (h.time || '').split('T');
+                return t.length > 1 ? t[1].substring(0, 8) : '';
+            });
+            rateChart.data.labels = rhLabels;
+            rateChart.data.datasets[0].data = d.rate_history.map(h => h.rate);
+            rateChart.update('none');
+        }
+
+        // Log feed
+        const evtHash = JSON.stringify(d.recent_events);
+        if (evtHash !== lastEvtHash && d.recent_events && d.recent_events.length) {
+            lastEvtHash = evtHash;
+            logFeed.innerHTML = '';
+            d.recent_events.forEach(e => {
+                const type = e.event_type || 'info';
+                // Parse ISO timestamp: "2026-05-14T14:17:16.949835" → "14:17:16"
+                let ts = '';
+                if (e.timestamp) {
+                    const parts = e.timestamp.split('T');
+                    if (parts.length > 1) {
+                        ts = parts[1].substring(0, 8);  // "HH:MM:SS"
+                    }
+                }
+                const msg = e.message || `${type}: Confidence ${e.confidence}%`;
+                const div = document.createElement('div');
+                div.className = 'log-entry ' + type;
+                div.innerHTML = `<span class="log-time">${ts}</span><span class="log-msg">${msg}</span>`;
+                logFeed.appendChild(div);
+            });
+        } else if (!d.recent_events || d.recent_events.length === 0) {
+            // Show empty state when no events
+            if (logFeed.children.length === 0 || !logFeed.querySelector('.empty-state')) {
+                logFeed.innerHTML = '<div class="empty-state">Awaiting events from detection engine...</div>';
+            }
+        }
+
+    } catch (err) {
+        console.error('Poll error:', err);
+    }
+}
+
+setInterval(poll, 1200);
+poll();
+</script>
+</body>
+</html>

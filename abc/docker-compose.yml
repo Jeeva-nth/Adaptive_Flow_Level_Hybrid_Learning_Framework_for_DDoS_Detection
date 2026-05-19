@@ -1,0 +1,127 @@
+
+services:
+  # Redis — shared event bus between detection engine and dashboard
+  redis:
+    image: redis:7-alpine
+    container_name: ddos-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ddos-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Flask server - target for DDoS attacks
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ddos-server
+    command: python3 -m app.server
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models
+    environment:
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5050
+      - LOG_LEVEL=INFO
+      - DEBUG=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - ddos-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Detection system - monitors network traffic
+  detection:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ddos-detection
+    command: python3 -m app.detection
+    network_mode: "service:server"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models
+    environment:
+      - NETWORK_INTERFACE=any
+      - BPF_FILTER=tcp port 5050
+      - LOG_LEVEL=INFO
+      # Detection shares the server container's network namespace, so it
+      # inherits the server's DNS resolution and can reach Redis by hostname.
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Real-time web dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ddos-dashboard
+    command: python3 -m app.dashboard
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - DEBUG=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - ddos-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      detection:
+        condition: service_started
+    restart: unless-stopped
+
+  # DDoS simulator - generates attack traffic
+  simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Note: no container_name for simulator since it runs with --rm
+    command: python3 -m app.ddos_simulator
+    networks:
+      - ddos-network
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - FLASK_HOST=server
+      - FLASK_PORT=5050
+      - LOG_LEVEL=INFO
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - server
+    profiles:
+      - test
+
+networks:
+  ddos-network:
+    driver: bridge
