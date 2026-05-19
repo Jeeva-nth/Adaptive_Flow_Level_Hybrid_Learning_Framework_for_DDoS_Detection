@@ -1,1 +1,1 @@
-# abc
+# Adaptive Flow-Level Hybrid Learning Framework for DDoS Detection is a machine learning-based cybersecurity system that analyzes network traffic to detect DDoS attacks. It uses hybrid algorithms like Random Forest and Support Vector Machine for accurate and reliable attack detection.
